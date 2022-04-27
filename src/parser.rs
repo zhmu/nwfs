@@ -100,7 +100,7 @@ impl Hotfix {
 #[derive(Default,Debug)]
 pub struct Mirror {
     pub id: String,
-    pub create_time: u32,
+    pub create_time: Timestamp,
     // unk1[0] seems to be a flags fields, 90000 usually or b0000 if we have a mirror
     pub unk1: [ u32; 5 ],
     pub hotfix_v_id1: u32,
@@ -115,7 +115,7 @@ impl Mirror {
         let mut id = [ 0u8; 8 ];
         f.read(&mut id )?;
         mirror.id = terminate_string(&id);
-        mirror.create_time = f.read_u32::<LittleEndian>()?;
+        mirror.create_time = Timestamp::read_from(f)?;
         for n in 0..5 {
             mirror.unk1[n] = f.read_u32::<LittleEndian>()?;
         }
@@ -214,10 +214,10 @@ pub struct GrantList {
 pub struct VolumeInformation {
     pub parent_dir_id: u32,
     pub unk1: [ u32; 5 ],
-    pub create_time: u32,
+    pub create_time: Timestamp,
     pub owner_id: u32,
     pub unk2: [ u32; 2 ],
-    pub modify_time: u32,
+    pub modify_time: Timestamp,
     pub unk3: [ u32; 1 ],
     pub trustees: [ Trustee; 8 ],
     pub unk4: [ u32; 8 ]
@@ -229,17 +229,17 @@ pub struct FileItem {
     pub attr: u32,
     pub unk1: [ u8; 3 ],
     pub name: String,
-    pub create_time: u32,
+    pub create_time: Timestamp,
     pub owner_id: u32,
     pub unk2: [ u32; 2 ],
-    pub modify_time: u32,
+    pub modify_time: Timestamp,
     pub modifier_id: u32,
     pub length: u32,
     pub block_nr: u32,
     pub unk3: [ u32; 1 ],
     pub trustees: [ Trustee; 6 ],
     pub unk4: [ u32; 2 ],
-    pub delete_time: u32,
+    pub delete_time: Timestamp,
     pub delete_id: u32,
     pub unk5: [ u32; 2 ],
     pub file_entry: u32,
@@ -252,10 +252,10 @@ pub struct DirectoryItem {
     pub attr: u32,
     pub unk1: [ u8; 3 ],
     pub name: String,
-    pub create_time: u32,
+    pub create_time: Timestamp,
     pub owner_id: u32,
     pub unk2: [ u32; 2 ],
-    pub modify_time: u32,
+    pub modify_time: Timestamp,
     pub unk3: [ u32; 1 ],
     pub trustees: [ Trustee; 8 ],
     pub unk4: [ u16; 2 ],
@@ -293,10 +293,10 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry, std:
         DIRID_VOLUME_INFO => {
             let mut v = VolumeInformation{ parent_dir_id, ..Default::default() };
             parse_unknown_u32(f, &mut v.unk1)?;
-            v.create_time = f.read_u32::<LittleEndian>()?;
+            v.create_time = Timestamp::read_from(f)?;
             v.owner_id = f.read_u32::<LittleEndian>()?;
             parse_unknown_u32(f, &mut v.unk2)?;
-            v.modify_time = f.read_u32::<LittleEndian>()?;
+            v.modify_time = Timestamp::read_from(f)?;
             parse_unknown_u32(f, &mut v.unk3)?;
             parse_trustees(f, &mut v.trustees)?;
             parse_unknown_u32(f, &mut v.unk4)?;
@@ -317,10 +317,10 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry, std:
                 let mut fname = [ 0u8; 12 ];
                 f.read(&mut fname)?;
                 de.name = make_string(&fname, name_len);
-                de.create_time = f.read_u32::<LittleEndian>()?;
+                de.create_time = Timestamp::read_from(f)?;
                 de.owner_id = f.read_u32::<BigEndian>()?;
                 parse_unknown_u32(f, &mut de.unk2)?;
-                de.modify_time = f.read_u32::<LittleEndian>()?;
+                de.modify_time = Timestamp::read_from(f)?;
                 parse_unknown_u32(f, &mut de.unk3)?;
                 parse_trustees(f, &mut de.trustees)?;
                 parse_unknown_u16(f, &mut de.unk4)?;
@@ -338,17 +338,17 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry, std:
                 let mut fname = [ 0u8; 12 ];
                 f.read(&mut fname)?;
                 fe.name = make_string(&fname, name_len);
-                fe.create_time = f.read_u32::<LittleEndian>()?;
+                fe.create_time = Timestamp::read_from(f)?;
                 fe.owner_id = f.read_u32::<BigEndian>()?;
                 parse_unknown_u32(f, &mut fe.unk2)?;
-                fe.modify_time = f.read_u32::<LittleEndian>()?;
+                fe.modify_time = Timestamp::read_from(f)?;
                 fe.modifier_id = f.read_u32::<BigEndian>()?;
                 fe.length = f.read_u32::<LittleEndian>()?;
                 fe.block_nr = f.read_u32::<LittleEndian>()?;
                 parse_unknown_u32(f, &mut fe.unk3)?;
                 parse_trustees(f, &mut fe.trustees)?;
                 parse_unknown_u32(f, &mut fe.unk4)?;
-                fe.delete_time = f.read_u32::<LittleEndian>()?;
+                fe.delete_time = Timestamp::read_from(f)?;
                 fe.delete_id = f.read_u32::<BigEndian>()?;
                 parse_unknown_u32(f, &mut fe.unk5)?;
                 fe.file_entry = f.read_u32::<LittleEndian>()?;

@@ -7,6 +7,5 @@
 pub mod types;
 pub mod parser;
 pub mod partition;
-pub mod util;
 pub mod image;
 pub mod volume;

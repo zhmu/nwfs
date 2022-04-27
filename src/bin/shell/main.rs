@@ -10,7 +10,7 @@ use std::env;
 use std::io::{self, BufRead};
 
 use nwfs386::types::*;
-use nwfs386::{parser, image, util, volume};
+use nwfs386::{parser, image, volume};
 
 pub fn match_parent_dir_id(de: &parser::DirEntry, parent_dir_id: u32) -> bool {
     parent_dir_id == match de {
@@ -32,7 +32,7 @@ pub fn match_dir_entry_name(de: &parser::DirEntry, name: &str) -> bool {
 
 pub fn is_deleted_dir_entry(de: &parser::DirEntry) -> bool {
     match de {
-        parser::DirEntry::File(v) => { v.delete_time > 0  },
+        parser::DirEntry::File(v) => { v.delete_time.is_valid()  },
         _ => { false },
     }
 }
@@ -72,11 +72,11 @@ fn print_direntry_header() {
 fn print_direntry(de: &parser::DirEntry) {
     match de {
         parser::DirEntry::File(f) => {
-            println!(" file  {:14} {:7} {} {:08x}", f.name, f.length, util::format_timestamp(f.modify_time), f.modifier_id);
-            //println!("  created at {} by {:x}", util::format_timestamp(f.create_time), f.owner_id);
+            println!(" file  {:14} {:7} {} {:08x}", f.name, f.length, f.modify_time, f.modifier_id);
+            //println!("  created at {} by {:x}", f.create_time, f.owner_id);
         },
         parser::DirEntry::Directory(d) => {
-            println!(" dir   {:14}       - {:19} - ? {}", d.name, util::format_timestamp(d.modify_time), d.inherited_rights_mask);
+            println!(" dir   {:14}       - {:19} - ? {}", d.name, d.modify_time, d.inherited_rights_mask);
         },
         parser::DirEntry::Available(_) => {},
         parser::DirEntry::VolumeInformation(_) => {},
