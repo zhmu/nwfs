@@ -5,7 +5,7 @@
  * For conditions of distribution and use, see LICENSE file
  */
 use packed_struct::prelude::*;
-use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::fs::File;
 use std::env;
 use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
