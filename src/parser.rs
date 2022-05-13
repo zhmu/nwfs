@@ -7,6 +7,7 @@
 use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
 
 use std::io::{Read, Seek, SeekFrom};
+use std::fmt;
 
 use crate::types::*;
 
@@ -65,7 +66,7 @@ fn parse_unknown_u8<T: Read>(f: &mut T, unk: &mut [u8]) -> Result<(), std::io::E
 fn parse_trustees<T: Read>(f: &mut T, trustees: &mut [Trustee]) -> Result<(), std::io::Error> {
     for n in 0..trustees.len() {
         trustees[n].object_id = f.read_u32::<BigEndian>()?;
-        trustees[n].rights = f.read_u16::<LittleEndian>()?;
+        trustees[n].rights = Rights::read_from(f)?;
     }
     Ok(())
 }
@@ -199,7 +200,7 @@ impl Volumes {
 #[derive(Default,Debug)]
 pub struct Trustee {
     pub object_id: u32,
-    pub rights: u16
+    pub rights: Rights,
 }
 
 #[derive(Default,Debug)]
@@ -208,6 +209,16 @@ pub struct GrantList {
     pub unk1: [ u32; 5 ],
     pub trustees: [ Trustee; 16 ],
     pub unk2: [ u32; 2 ],
+}
+
+impl fmt::Display for GrantList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "parent_dir_id {} unk1 {:?} trustees {:?} unk2 {:?}",
+            self.parent_dir_id,
+            self.unk1,
+            self.trustees,
+            self.unk2)
+    }
 }
 
 #[derive(Default,Debug)]
@@ -223,10 +234,25 @@ pub struct VolumeInformation {
     pub unk4: [ u32; 8 ]
 }
 
+impl fmt::Display for VolumeInformation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "parent_dir_id {} unk1 {:?} create_time {} owner_id {} unk2 {:?} modify_time {} unk3 {:?} trustees {:?} unk4 {:?}",
+            self.parent_dir_id,
+            self.unk1,
+            self.create_time,
+            self.owner_id,
+            self.unk2,
+            self.modify_time,
+            self.unk3,
+            self.trustees,
+            self.unk4)
+    }
+}
+
 #[derive(Default,Debug)]
 pub struct FileItem {
     pub parent_dir_id: u32,
-    pub attr: u32,
+    pub attr: Attributes,
     pub unk1: [ u8; 3 ],
     pub name: String,
     pub create_time: Timestamp,
@@ -246,10 +272,35 @@ pub struct FileItem {
     pub unk6: [ u32; 1 ],
 }
 
+impl fmt::Display for FileItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "parent_dir_id {} attr {} unk1 {:?} name {} create_time {} owner_id {} unk2 {:?} modify_time {} modifier_id {} length {} block_nr {} unk3 {:?} trustees {:?} unk4 {:?} delete_time {} delete_id {} unk5 {:?} file_entry {} unk6 {:?}",
+            self.parent_dir_id,
+            self.attr,
+            self.unk1,
+            self.name,
+            self.create_time,
+            self.owner_id,
+            self.unk2,
+            self.modify_time,
+            self.modifier_id,
+            self.length,
+            self.block_nr,
+            self.unk3,
+            self.trustees,
+            self.unk4,
+            self.delete_time,
+            self.delete_id,
+            self.unk5,
+            self.file_entry,
+            self.unk6)
+    }
+}
+
 #[derive(Default,Debug)]
 pub struct DirectoryItem {
     pub parent_dir_id: u32,
-    pub attr: u32,
+    pub attr: Attributes,
     pub unk1: [ u8; 3 ],
     pub name: String,
     pub create_time: Timestamp,
@@ -264,6 +315,28 @@ pub struct DirectoryItem {
     pub unk5: [ u16; 7 ],
     pub directory_id: u32,
     pub unk6: [ u16; 2 ],
+}
+
+impl fmt::Display for DirectoryItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "parent_dir_id {} attr {} unk1 {:?} name {} create_time {} owner_id {} unk2 {:?} modify_time {} unk3 {:?} trustees {:?} unk4 {:?} inherited_rights_mask {} subdir_index {} unk5 {:?} directory_id {} unk6 {:?}",
+            self.parent_dir_id,
+            self.attr,
+            self.unk1,
+            self.name,
+            self.create_time,
+            self.owner_id,
+            self.unk2,
+            self.modify_time,
+            self.unk3,
+            self.trustees,
+            self.unk4,
+            self.inherited_rights_mask,
+            self.subdir_index,
+            self.unk5,
+            self.directory_id,
+            self.unk6)
+    }
 }
 
 #[derive(Default,Debug)]
@@ -308,8 +381,9 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry, std:
             Ok(DirEntry::Available(available))
         },
         _ => {
-            let attr = f.read_u32::<LittleEndian>()?;
-            if (attr & ATTR_DIRECTORY) != 0 {
+            //let attr = f.read_u32::<LittleEndian>()?;
+            let attr = Attributes::read_from(f)?;
+            if attr.is_directory() {
                 // Directory
                 let mut de = DirectoryItem{ parent_dir_id, attr, ..Default::default() };
                 parse_unknown_u8(f, &mut de.unk1)?;
@@ -357,5 +431,11 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry, std:
             }
         }
     }
+}
+
+pub fn parse_fat_entry<T: Read>(f: &mut T) -> Result<(u32, u32), std::io::Error> {
+    let a = f.read_u32::<LittleEndian>()?;
+    let b = f.read_u32::<LittleEndian>()?;
+    Ok((a, b))
 }
 
