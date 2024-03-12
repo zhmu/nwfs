@@ -42,12 +42,11 @@ This tool allows you to decode and dump all structures. It can be used as follow
 
 ```
 $ cargo run --bin inspect-nwfs386 <path to disk image>
+```
 
 ## NWFS286
 
 Only a preliminary `shell-nwfs286` is available - this tool expects a disk image file. Usage is similar to `shell-nwfs386`.
-
-```
 
 ## TODO / feature request
 
