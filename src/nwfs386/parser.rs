@@ -12,6 +12,7 @@ use std::fmt;
 use anyhow::{anyhow, Result};
 
 use crate::nwfs386::types::{Attributes, Rights, Timestamp};
+use crate::util;
 
 const DIRID_VOLUME_INFO: u32 = 0xfffffffd;
 const DIRID_GRANT_LIST: u32 = 0xfffffffe;
@@ -28,20 +29,6 @@ pub const ATTR_DIRECTORY: u32 = 0x10;
 pub const ATTR_SYSTEM: u32 = 0x4;
 pub const ATTR_HIDDEN: u32 = 0x2;
 pub const ATTR_READONLY: u32 = 0x1;
-
-fn terminate_string(s: &[u8]) -> String {
-    let mut s = String::from_utf8_lossy(&s).to_string();
-    if let Some(n) = s.find(char::from(0)) {
-        s.truncate(n);
-    }
-    s
-}
-
-fn make_string(s: &[u8], length: u8) -> String {
-    let mut s = String::from_utf8_lossy(&s).to_string();
-    s.truncate(length.into());
-    s
-}
 
 fn parse_unknown_u32<T: Read>(f: &mut T, unk: &mut [u32]) -> Result<()> {
     for n in 0..unk.len() {
@@ -89,7 +76,7 @@ impl Hotfix {
         let mut hotfix = Hotfix{ ..Default::default() };
         let mut id = [ 0u8; 8 ];
         f.read(&mut id )?;
-        hotfix.id = terminate_string(&id);
+        hotfix.id = util::asciiz_to_string(&id);
         hotfix.v_id = f.read_u32::<LittleEndian>()?;
         parse_unknown_u16(f, &mut hotfix.unk1)?;
         hotfix.data_area_sectors = f.read_u32::<LittleEndian>()?;
@@ -116,7 +103,7 @@ impl Mirror {
         let mut mirror = Mirror{ ..Default::default() };
         let mut id = [ 0u8; 8 ];
         f.read(&mut id )?;
-        mirror.id = terminate_string(&id);
+        mirror.id = util::asciiz_to_string(&id);
         mirror.create_time = Timestamp::read_from(f)?;
         for n in 0..5 {
             mirror.unk1[n] = f.read_u32::<LittleEndian>()?;
@@ -153,7 +140,7 @@ impl VolumeInfo {
         let name_len = f.read_u8()?;
         let mut vol_name = [ 0u8; 19 ];
         f.read(&mut vol_name)?;
-        volume.name = make_string(&vol_name, name_len);
+        volume.name = util::ascii_with_length_to_string(&vol_name, name_len);
         volume.unk1 = f.read_u16::<LittleEndian>()?;
         volume.segment_num = f.read_u16::<LittleEndian>()?;
         volume.first_sector = f.read_u32::<LittleEndian>()?;
@@ -181,7 +168,7 @@ impl Volumes {
         f.seek(SeekFrom::Start(offset))?;
         let mut magic = [ 0u8; 16 ];
         f.read(&mut magic )?;
-        let magic = terminate_string(&magic);
+        let magic = util::asciiz_to_string(&magic);
         if magic != "NetWare Volumes" { return Err(anyhow!("volume area is corrupt (magic mismatches)")); }
 
         let mut volumes = Volumes{ ..Default::default() };
@@ -391,7 +378,7 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry> {
                 let name_len = f.read_u8()?;
                 let mut fname = [ 0u8; 12 ];
                 f.read(&mut fname)?;
-                de.name = make_string(&fname, name_len);
+                de.name = util::ascii_with_length_to_string(&fname, name_len);
                 de.create_time = Timestamp::read_from(f)?;
                 de.owner_id = f.read_u32::<BigEndian>()?;
                 parse_unknown_u32(f, &mut de.unk2)?;
@@ -412,7 +399,7 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry> {
                 let name_len = f.read_u8()?;
                 let mut fname = [ 0u8; 12 ];
                 f.read(&mut fname)?;
-                fe.name = make_string(&fname, name_len);
+                fe.name = util::ascii_with_length_to_string(&fname, name_len);
                 fe.create_time = Timestamp::read_from(f)?;
                 fe.owner_id = f.read_u32::<BigEndian>()?;
                 parse_unknown_u32(f, &mut fe.unk2)?;

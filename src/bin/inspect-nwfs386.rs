@@ -9,7 +9,8 @@ use std::fs::File;
 use std::env;
 use anyhow::Result;
 
-use nwfs::nwfs386::{image, parser, partition, types};
+use nwfs::nwfs386::{parser, partition, types};
+use nwfs::util;
 
 fn get_fat_entry(f: &mut std::fs::File, first_block_offset: u64, entry_num: u32) -> Result<(u32, u32)> {
     let block_offset = first_block_offset + ((entry_num as u64) * 8);
@@ -60,7 +61,7 @@ fn main() -> Result<()> {
 
     let path = &args[1];
     let mut f = File::open(path)?;
-    let p = image::find_netware_partition(&mut f)?;
+    let p = util::find_partition(&mut f, util::PartitionType::NetWare386)?;
     if p.is_none() {
         panic!("cannot find a NetWare partition");
     }
