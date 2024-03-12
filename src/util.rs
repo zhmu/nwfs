@@ -9,11 +9,13 @@ use std::io::{Read, Seek, SeekFrom};
 use anyhow::Result;
 
 pub enum PartitionType {
+    NetWare286,
     NetWare386,
 }
 
 fn to_partition_id(t: PartitionType) -> u8 {
     match t {
+        PartitionType::NetWare286 => 0x64,
         PartitionType::NetWare386 => 0x65,
     }
 }
