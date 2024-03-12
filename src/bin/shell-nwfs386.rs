@@ -6,11 +6,21 @@
  */
 use std::io::{Read, Write};
 use std::fs::File;
-use std::env;
 use std::io::{self, BufRead};
 use anyhow::Result;
+use clap::Parser;
 
 use nwfs::nwfs386::{parser, image, volume};
+
+/// Transfer data from NetWare 386 partitions
+#[derive(Parser)]
+struct Cli {
+    /// Image file
+    image: String,
+    #[clap(long, short, default_value="SYS")]
+    /// Volume to access
+    volume: String,
+}
 
 pub fn match_parent_dir_id(de: &parser::DirEntry, parent_dir_id: u32) -> bool {
     parent_dir_id == match de {
@@ -126,18 +136,13 @@ fn copy_file_data(vol: &mut volume::LogicalVolume, f: &mut std::fs::File, block_
 }
 
 fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        panic!("usage: {} file.img", args[0]);
-    }
-
-    let path = &args[1];
-    let f = File::open(path)?;
+    let args = Cli::parse();
+    let f = File::open(args.image)?;
 
     let mut image_list = image::ImageList::new();
     image_list.add_image(f)?;
 
-    let mut vol = volume::LogicalVolume::new(&mut image_list, "SYS")?;
+    let mut vol = volume::LogicalVolume::new(&mut image_list, &args.volume)?;
     let vol_name = &vol.volumes.first().unwrap().info.name.clone();
     let mut current_directory_id = vec! [ 0 ];
     let mut current_directory: Vec<String> = vec![ "".to_string() ];
