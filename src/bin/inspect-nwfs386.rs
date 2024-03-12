@@ -1,23 +1,23 @@
 /*-
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Copyright (c) 2022 Rink Springer <rink@rink.nu>
+ * Copyright (c) 2022, 2024 Rink Springer <rink@rink.nu>
  * For conditions of distribution and use, see LICENSE file
  */
 use std::io::{Seek, SeekFrom};
 use std::fs::File;
 use std::env;
+use anyhow::Result;
 
-use nwfs386::{image, parser, partition};
-use nwfs386::types::*;
+use nwfs::nwfs386::{image, parser, partition, types};
 
-fn get_fat_entry(f: &mut std::fs::File, first_block_offset: u64, entry_num: u32) -> Result<(u32, u32), std::io::Error> {
+fn get_fat_entry(f: &mut std::fs::File, first_block_offset: u64, entry_num: u32) -> Result<(u32, u32)> {
     let block_offset = first_block_offset + ((entry_num as u64) * 8);
     f.seek(SeekFrom::Start(block_offset))?;
     parser::parse_fat_entry(f)
 }
 
-fn dump_fat_chain(f: &mut std::fs::File, first_block_offset: u64, entry_num: u32) -> Result<(), std::io::Error> {
+fn dump_fat_chain(f: &mut std::fs::File, first_block_offset: u64, entry_num: u32) -> Result<()> {
     println!("dump_fat_chain: entry {} ->", entry_num);
     let mut current_entry = entry_num;
     while current_entry != 0xffffffff {
@@ -28,7 +28,7 @@ fn dump_fat_chain(f: &mut std::fs::File, first_block_offset: u64, entry_num: u32
     Ok(())
 }
 
-fn read_dir_block(f: &mut std::fs::File, block_size: u32) -> Result<(), NetWareError> {
+fn read_dir_block(f: &mut std::fs::File, block_size: u32) -> Result<()> {
     for _ in 0..(block_size / 128) {
         let de = parser::parse_directory_entry(f)?;
         match de {
@@ -52,7 +52,7 @@ fn read_dir_block(f: &mut std::fs::File, block_size: u32) -> Result<(), NetWareE
     Ok(())
 }
 
-fn main() -> Result<(), NetWareError> {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         panic!("usage: {} file.img", args[0]);
@@ -65,9 +65,9 @@ fn main() -> Result<(), NetWareError> {
         panic!("cannot find a NetWare partition");
     }
     let lba_start = p.unwrap();
-    println!("partition offset {:x}", lba_start * SECTOR_SIZE);
+    println!("partition offset {:x}", lba_start * types::SECTOR_SIZE);
 
-    let partition = partition::NWPartition::new(&mut f, lba_start * SECTOR_SIZE)?;
+    let partition = partition::NWPartition::new(&mut f, lba_start * types::SECTOR_SIZE)?;
     println!("hotfix data: {:?}", partition.hotfix);
     println!("mirror data: {:?}", partition.mirror);
     println!("volume data: {:?}", partition.volumes);

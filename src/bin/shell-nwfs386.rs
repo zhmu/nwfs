@@ -1,16 +1,16 @@
 /*-
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Copyright (c) 2022 Rink Springer <rink@rink.nu>
+ * Copyright (c) 2022, 2024 Rink Springer <rink@rink.nu>
  * For conditions of distribution and use, see LICENSE file
  */
 use std::io::{Read, Write};
 use std::fs::File;
 use std::env;
 use std::io::{self, BufRead};
+use anyhow::Result;
 
-use nwfs386::types::*;
-use nwfs386::{parser, image, volume};
+use nwfs::nwfs386::{parser, image, volume};
 
 pub fn match_parent_dir_id(de: &parser::DirEntry, parent_dir_id: u32) -> bool {
     parent_dir_id == match de {
@@ -107,7 +107,7 @@ fn find_file_entry(vol: &volume::LogicalVolume, current_directory_id: u32, fname
     None
 }
 
-fn copy_file_data(vol: &mut volume::LogicalVolume, f: &mut std::fs::File, block_nr: u32, length: u32) -> Result<usize, NetWareError> {
+fn copy_file_data(vol: &mut volume::LogicalVolume, f: &mut std::fs::File, block_nr: u32, length: u32) -> Result<usize> {
     let mut current_entry = block_nr;
     let mut bytes_left = length as usize;
     let block_size = vol.volumes.first().unwrap().info.block_size as usize;
@@ -125,7 +125,7 @@ fn copy_file_data(vol: &mut volume::LogicalVolume, f: &mut std::fs::File, block_
     Ok(length as usize)
 }
 
-fn main() -> Result<(), NetWareError> {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         panic!("usage: {} file.img", args[0]);

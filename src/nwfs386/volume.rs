@@ -1,15 +1,15 @@
 /*-
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Copyright (c) 2022 Rink Springer <rink@rink.nu>
+ * Copyright (c) 2022, 2024 Rink Springer <rink@rink.nu>
  * For conditions of distribution and use, see LICENSE file
  */
 
 use std::io::{Seek, SeekFrom};
 use byteorder::{LittleEndian, ReadBytesExt};
+use anyhow::{anyhow, Result};
 
-use crate::{image, partition, parser};
-use crate::types::*;
+use crate::nwfs386::{image, partition, parser, types};
 
 pub struct VolumeInImage {
     pub file: std::fs::File,
@@ -21,7 +21,7 @@ impl VolumeInImage {
     fn calculate_block_range(&self) -> (u32, u32) {
         let v = &self.info;
         let first_block = v.first_segment_block;
-        let sectors_per_block = v.block_size / SECTOR_SIZE as u32;
+        let sectors_per_block = v.block_size / types::SECTOR_SIZE as u32;
         let last_block = first_block + v.num_sectors * sectors_per_block;
         (first_block, last_block)
     }
@@ -33,7 +33,7 @@ pub struct LogicalVolume  {
 }
 
 impl LogicalVolume {
-    pub fn new(image_list: &mut image::ImageList, name: &str) -> Result<LogicalVolume, NetWareError> {
+    pub fn new(image_list: &mut image::ImageList, name: &str) -> Result<LogicalVolume> {
         let mut volumes = Vec::new();
         for partition in image_list.images.iter_mut() {
             let nwp = partition::NWPartition::new(&mut partition.file, partition.start_offset)?;
@@ -46,14 +46,14 @@ impl LogicalVolume {
             }
         }
         if volumes.is_empty() {
-            return Err(NetWareError::VolumeNotFound);
+            return Err(anyhow!("volume not found"));
         }
         let mut logical_volume = LogicalVolume{ volumes, directory: Vec::new() };
         logical_volume.read_directory()?;
         Ok(logical_volume)
     }
 
-    fn read_directory(&mut self) -> Result<(), NetWareError> {
+    fn read_directory(&mut self) -> Result<()> {
         let volume = self.volumes.first().unwrap();
         let block_size = volume.info.block_size;
         let mut items = Vec::new();
@@ -72,7 +72,7 @@ impl LogicalVolume {
         Ok(())
     }
 
-    pub fn seek_block(&mut self, block: u32) -> Result<&mut std::fs::File, NetWareError> {
+    pub fn seek_block(&mut self, block: u32) -> Result<&mut std::fs::File> {
         for vol in self.volumes.iter_mut() {
             let (first_block, last_block) = vol.calculate_block_range();
             if block >= first_block && block < last_block {
@@ -84,10 +84,10 @@ impl LogicalVolume {
                 return Ok(file)
             }
         }
-        Err(NetWareError::BlockOutOfRange(block))
+        Err(anyhow!("block {} out of range", block))
     }
 
-    pub fn read_fat_entry(&mut self, entry: u32) -> Result<(u32, u32), NetWareError> {
+    pub fn read_fat_entry(&mut self, entry: u32) -> Result<(u32, u32)> {
         for vol in self.volumes.iter_mut() {
             let (first_block, last_block) = vol.calculate_block_range();
             if entry >= first_block && entry < last_block {
@@ -99,7 +99,6 @@ impl LogicalVolume {
                 return Ok((a, b));
             }
         }
-        Err(NetWareError::FATCorrupt(entry))
+        Err(anyhow!("fat entry {} is corrupt", entry))
     }
 }
-

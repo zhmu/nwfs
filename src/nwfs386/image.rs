@@ -1,17 +1,18 @@
 /*-
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Copyright (c) 2022 Rink Springer <rink@rink.nu>
+ * Copyright (c) 2022, 2024 Rink Springer <rink@rink.nu>
  * For conditions of distribution and use, see LICENSE file
  */
 use std::io::{Read, Seek, SeekFrom};
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::types::*;
+use anyhow::{anyhow, Result};
+use crate::nwfs386::types;
 
 const SYSTEM_ID_NETWARE: u8 = 0x65;
 
-pub fn find_netware_partition<T: Seek + Read>(f: &mut T) -> Result<Option<u64>, std::io::Error> {
+pub fn find_netware_partition<T: Seek + Read>(f: &mut T) -> Result<Option<u64>> {
     // Seek to MBR and parse the partition table
     f.seek(SeekFrom::Start(446))?;
     for _ in 0..4 {
@@ -43,10 +44,10 @@ impl ImageList {
         Self{ images: Vec::new() }
     }
 
-    pub fn add_image(&mut self, mut file: std::fs::File) -> Result<(), NetWareError> {
+    pub fn add_image(&mut self, mut file: std::fs::File) -> Result<()> {
         let p = find_netware_partition(&mut file)?;
-        if p.is_none() { return Err(NetWareError::NoPartitionFound) };
-        let start_offset = p.unwrap() * SECTOR_SIZE;
+        if p.is_none() { return Err(anyhow!("no NetWare 386 partition found")); }
+        let start_offset = p.unwrap() * types::SECTOR_SIZE;
 
         self.images.push(Image{ file, start_offset });
         Ok(())

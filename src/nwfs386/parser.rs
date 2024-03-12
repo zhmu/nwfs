@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Copyright (c) 2022 Rink Springer <rink@rink.nu>
+ * Copyright (c) 2022, 2024 Rink Springer <rink@rink.nu>
  * For conditions of distribution and use, see LICENSE file
  */
 use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
@@ -9,7 +9,9 @@ use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
 use std::io::{Read, Seek, SeekFrom};
 use std::fmt;
 
-use crate::types::*;
+use anyhow::{anyhow, Result};
+
+use crate::nwfs386::types::{Attributes, Rights, Timestamp};
 
 const DIRID_VOLUME_INFO: u32 = 0xfffffffd;
 const DIRID_GRANT_LIST: u32 = 0xfffffffe;
@@ -27,7 +29,6 @@ pub const ATTR_SYSTEM: u32 = 0x4;
 pub const ATTR_HIDDEN: u32 = 0x2;
 pub const ATTR_READONLY: u32 = 0x1;
 
-
 fn terminate_string(s: &[u8]) -> String {
     let mut s = String::from_utf8_lossy(&s).to_string();
     if let Some(n) = s.find(char::from(0)) {
@@ -42,28 +43,28 @@ fn make_string(s: &[u8], length: u8) -> String {
     s
 }
 
-fn parse_unknown_u32<T: Read>(f: &mut T, unk: &mut [u32]) -> Result<(), std::io::Error> {
+fn parse_unknown_u32<T: Read>(f: &mut T, unk: &mut [u32]) -> Result<()> {
     for n in 0..unk.len() {
         unk[n] = f.read_u32::<LittleEndian>()?;
     }
     Ok(())
 }
 
-fn parse_unknown_u16<T: Read>(f: &mut T, unk: &mut [u16]) -> Result<(), std::io::Error> {
+fn parse_unknown_u16<T: Read>(f: &mut T, unk: &mut [u16]) -> Result<()> {
     for n in 0..unk.len() {
         unk[n] = f.read_u16::<LittleEndian>()?;
     }
     Ok(())
 }
 
-fn parse_unknown_u8<T: Read>(f: &mut T, unk: &mut [u8]) -> Result<(), std::io::Error> {
+fn parse_unknown_u8<T: Read>(f: &mut T, unk: &mut [u8]) -> Result<()> {
     for n in 0..unk.len() {
         unk[n] = f.read_u8()?;
     }
     Ok(())
 }
 
-fn parse_trustees<T: Read>(f: &mut T, trustees: &mut [Trustee]) -> Result<(), std::io::Error> {
+fn parse_trustees<T: Read>(f: &mut T, trustees: &mut [Trustee]) -> Result<()> {
     for n in 0..trustees.len() {
         trustees[n].object_id = f.read_u32::<BigEndian>()?;
         trustees[n].rights = Rights::read_from(f)?;
@@ -82,7 +83,7 @@ pub struct Hotfix {
 }
 
 impl Hotfix {
-    pub fn new<T: Seek + Read>(f: &mut T, offset: u64) -> Result<Hotfix, std::io::Error> {
+    pub fn new<T: Seek + Read>(f: &mut T, offset: u64) -> Result<Hotfix> {
         f.seek(SeekFrom::Start(offset))?;
 
         let mut hotfix = Hotfix{ ..Default::default() };
@@ -109,7 +110,7 @@ pub struct Mirror {
 }
 
 impl Mirror {
-    pub fn new<T: Seek + Read>(f: &mut T, offset: u64) -> Result<Mirror, std::io::Error> {
+    pub fn new<T: Seek + Read>(f: &mut T, offset: u64) -> Result<Mirror> {
         f.seek(SeekFrom::Start(offset))?;
 
         let mut mirror = Mirror{ ..Default::default() };
@@ -147,7 +148,7 @@ pub struct VolumeInfo {
 }
 
 impl VolumeInfo {
-    pub fn new<T: Read>(f: &mut T) -> Result<VolumeInfo, std::io::Error> {
+    pub fn new<T: Read>(f: &mut T) -> Result<VolumeInfo> {
         let mut volume = VolumeInfo{ ..Default::default() };
         let name_len = f.read_u8()?;
         let mut vol_name = [ 0u8; 19 ];
@@ -176,12 +177,12 @@ pub struct Volumes {
 }
 
 impl Volumes {
-    pub fn new<T: Seek + Read>(f: &mut T, offset: u64) -> Result<Volumes, NetWareError> {
+    pub fn new<T: Seek + Read>(f: &mut T, offset: u64) -> Result<Volumes> {
         f.seek(SeekFrom::Start(offset))?;
         let mut magic = [ 0u8; 16 ];
         f.read(&mut magic )?;
         let magic = terminate_string(&magic);
-        if magic != "NetWare Volumes" { return Err(NetWareError::VolumeAreaCorrupt); }
+        if magic != "NetWare Volumes" { return Err(anyhow!("volume area is corrupt (magic mismatches)")); }
 
         let mut volumes = Volumes{ ..Default::default() };
         let num_volumes = f.read_u32::<LittleEndian>()?;
@@ -353,7 +354,7 @@ pub enum DirEntry {
     Directory(DirectoryItem),
 }
 
-pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry, std::io::Error> {
+pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry> {
     let parent_dir_id = f.read_u32::<LittleEndian>()?;
     return match parent_dir_id {
         DIRID_GRANT_LIST => {
@@ -433,7 +434,7 @@ pub fn parse_directory_entry<T: Seek + Read>(f: &mut T) -> Result<DirEntry, std:
     }
 }
 
-pub fn parse_fat_entry<T: Read>(f: &mut T) -> Result<(u32, u32), std::io::Error> {
+pub fn parse_fat_entry<T: Read>(f: &mut T) -> Result<(u32, u32)> {
     let a = f.read_u32::<LittleEndian>()?;
     let b = f.read_u32::<LittleEndian>()?;
     Ok((a, b))

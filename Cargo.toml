@@ -1,5 +1,5 @@
 [package]
-name = "nwfs386"
+name = "nwfs"
 version = "0.1.0"
 authors = ["Rink Springer <rink@rink.nu>"]
 edition = "2018"
@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 packed_struct = "0.5"
 byteorder = "1"
+anyhow = "1.0.81"
