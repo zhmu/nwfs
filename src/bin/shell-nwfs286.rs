@@ -9,6 +9,9 @@ use std::io::{BufRead, Write};
 
 use nwfs::nwfs286::{parser, types};
 use nwfs::util;
+use nwfs::shell_cli;
+
+const NWFS286_ROOT_ID: u32 = 1;
 
 /// Transfer data from NetWare 286 partitions
 #[derive(Parser)]
@@ -17,22 +20,20 @@ struct Cli {
     in_file: String,
 }
 
-fn find_file_entry<'a>(entries: &'a [parser::DirectoryEntry], current_directory_id: u16, fname: &str) -> Option<&'a parser::DirectoryEntry> {
+fn find_directory_entry<'a>(entries: &'a [parser::DirectoryEntry], current_directory_id: u32, fname: &str) -> Result<&'a parser::DirectoryEntry> {
     let items: Vec<_> = entries
         .iter()
         .filter(|de|
-            de.parent_dir == current_directory_id &&
-            de.fname == fname
+            de.parent_dir as u32 == current_directory_id &&
+            de.fname.eq_ignore_ascii_case(fname)
         ).collect();
     if items.is_empty() {
-        println!("File not found");
-        return None;
+        return Err(anyhow!("File not found"));
     }
     if items.len() != 1 {
-        println!("Multiple items matching");
-        return None;
+        return Err(anyhow!("Multiple items matching"));
     }
-    Some(items.first().unwrap())
+    Ok(items.first().unwrap())
 }
 
 fn copy_file_data(de: &parser::DirectoryEntry, fat: &[parser::FatEntry], in_f: &mut File, out_f: &mut File) -> Result<u32> {
@@ -52,13 +53,71 @@ fn copy_file_data(de: &parser::DirectoryEntry, fat: &[parser::FatEntry], in_f: &
     Ok(de.size)
 }
 
-fn print_direntry_header() {
-    println!("<type> ID Name            Attr Size    Last Modified");
+struct Nwfs286Shell {
+    vol: parser::VolumeInfo,
+    entries: Vec<parser::DirectoryEntry>,
+    fat: Vec<parser::FatEntry>,
+    file: File
 }
 
-fn print_direntry(de: &parser::DirectoryEntry) {
-    println!("???   {:3x} {:14} {:04x} {:8} {} {}",
-      de.entry_id, de.fname, de.attr, de.size, de.last_modified_date, de.last_modified_time);
+impl Nwfs286Shell {
+    pub fn new(vol: parser::VolumeInfo, entries: Vec<parser::DirectoryEntry>, fat: Vec<parser::FatEntry>, file: File) -> Self {
+        Nwfs286Shell{ vol, entries, fat, file }
+    }
+}
+
+impl shell_cli::ShellImpl for Nwfs286Shell {
+    fn get_volume_name(&self) -> String {
+        self.vol.name.clone()
+    }
+
+    fn dir(&self, current_dir_id: u32) {
+        println!("<type> ID Name            Attr Size    Last Modified");
+        for de in self.entries.iter().filter(|e| e.parent_dir as u32 == current_dir_id) {
+            println!("???   {:3x} {:14} {:04x} {:8} {} {}",
+              de.entry_id, de.fname, de.attr, de.size, de.last_modified_date, de.last_modified_time);
+        }
+    }
+
+    fn lookup_directory(&self, pieces: &[String]) -> Option<Vec<u32>> {
+        // Remove initial /
+        let mut iter = pieces.iter();
+        iter.next().unwrap(); // skip /
+
+        let directory = &self.entries;
+        let mut directory_ids: Vec<u32> = vec![ NWFS286_ROOT_ID ];
+        while let Some(piece) = iter.next() {
+            if piece.is_empty() { continue; }
+            let item = find_directory_entry(&self.entries, *directory_ids.last().unwrap(), piece).ok()?;
+            directory_ids.push(item.entry_id as u32);
+        }
+        Some(directory_ids)
+    }
+
+    fn retrieve_file_content(&mut self, current_dir_id: u32, fname: &str) -> Result<Vec<u8>> {
+        let de = find_directory_entry(&self.entries, current_dir_id, fname)?;
+
+        let mut bytes_left = de.size as usize;
+        let mut data = vec![ 0u8; bytes_left ];
+
+        let mut blk = de.block_nr;
+        let mut current_offset: usize = 0;
+        while bytes_left > 0 {
+            let chunk_size = std::cmp::min(types::BLOCK_SIZE as usize, bytes_left);
+
+            self.file.seek(SeekFrom::Start(parser::block_to_offset(blk)))?;
+            self.file.read_exact(&mut data[current_offset..current_offset + chunk_size])?;
+
+            blk = self.fat[blk as usize].block;
+            current_offset += chunk_size;
+            bytes_left -= chunk_size;
+        }
+        Ok(data)
+    }
+
+    fn handle_command(&mut self, _current_dir_id: u32, _fields: &Vec<&str>) -> bool {
+        false
+    }
 }
 
 fn main() -> Result<()> {
@@ -75,70 +134,6 @@ fn main() -> Result<()> {
     let entries = parser::read_directory_entries(&mut f, &vi.directory_entries_1_blocks)?;
     let fat = parser::read_fat_table(&mut f, &vi.fat_blocks)?;
 
-    let vol_name = vi.name;
-    let mut current_directory_id = vec! [ 1 ];
-    let mut current_directory: Vec<String> = vec![ "".to_string() ];
-
-    let stdin = io::stdin();
-    let mut input = stdin.lock().lines();
-    loop {
-        print!("{}:/{}> ", vol_name, current_directory[1..].join("/"));
-        io::stdout().flush()?;
-        let line = input.next();
-        if line.is_none() { break; }
-        let line = line.unwrap();
-        if line.is_err() { break; }
-        let line = line.unwrap();
-
-        let fields: Vec<_> = line.split_whitespace().collect();
-        if fields.is_empty() { continue; }
-        let command = *fields.first().unwrap();
-
-        if command == "dir" || command == "ls" {
-            print_direntry_header();
-            for de in entries.iter().filter(|e| e.parent_dir == *current_directory_id.last().unwrap()) {
-                print_direntry(&de);
-            }
-        } else if command == "cd" {
-            if fields.len() != 2 {
-                println!("usage: cd directory");
-                continue;
-            }
-            let dest = fields[1];
-            if dest != ".." {
-                if let Some(new_id) = find_file_entry(&entries, *current_directory_id.last().unwrap(), dest) {
-                    current_directory.push(dest.to_string());
-                    current_directory_id.push(new_id.entry_id);
-                }
-            } else {
-                if current_directory_id.len() > 1 {
-                    current_directory.pop();
-                    current_directory_id.pop();
-                }
-            }
-        } else if command == "get" {
-            if fields.len() != 2 {
-                println!("usage: get file");
-                continue;
-            }
-            let fname = fields[1];
-            if let Some(de) = entries.iter().filter(|e| e.parent_dir == *current_directory_id.last().unwrap() && e.fname == fname).next() {
-                if let Ok(mut out_f) = File::create(fname) {
-                    match copy_file_data(de, &fat, &mut f, &mut out_f) {
-                        Ok(size) => {
-                            println!("{} bytes copied", size);
-                        },
-                        Err(e) => {
-                            println!("unable to copy file data: {:?}", e);
-                        }
-                    }
-                } else {
-                    println!("couldn't create {}", fname);
-                }
-            } else {
-                println!("file not found");
-            }
-        }
-    }
-    Ok(())
+    let mut shell = Nwfs286Shell::new(vi, entries, fat, f);
+    shell_cli::run(NWFS286_ROOT_ID, &mut shell)
 }
