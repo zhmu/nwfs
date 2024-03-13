@@ -9,3 +9,4 @@ pub mod parser;
 pub mod partition;
 pub mod image;
 pub mod volume;
+pub mod shell;

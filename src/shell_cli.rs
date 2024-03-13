@@ -11,14 +11,15 @@ use anyhow::Result;
 
 pub trait ShellImpl {
     fn get_volume_name(&self) -> String;
+    fn get_root_directory_id(&self) -> u32;
     fn dir(&self, current_dir_id: u32);
     fn lookup_directory(&self, pieces: &[String]) -> Option<Vec<u32>>;
     fn retrieve_file_content(&mut self, current_dir_id: u32, fname: &str) -> Result<Vec<u8>>;
     fn handle_command(&mut self, current_dir_id: u32, fields: &Vec<&str>) -> bool;
 }
 
-pub fn run(root_directory_id: u32, shell: &mut impl ShellImpl) -> Result<()> {
-    let mut current_directory_id = vec! [ root_directory_id ];
+pub fn run(shell: &mut impl ShellImpl) -> Result<()> {
+    let mut current_directory_id = vec! [ shell.get_root_directory_id() ];
     let mut current_directory: Vec<String> = vec![ "".to_string() ];
 
     let stdin = io::stdin();
