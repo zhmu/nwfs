@@ -1,19 +1,26 @@
 # Novell NetWare Filesystem tools
 
-This is an attempt to reverse engineer the Novell NetWare filesystems. It covers both the NWFS286 (Novell NetWare 2.x) and NWFS386 (Novell NetWare 3.x and likely also 4.x and later) filesystems.
+This is an attempt to reverse engineer the Novell NetWare filesystems. It covers both NWFS286 (Novell NetWare 2.x) and NWFS386 (Novell NetWare 3.x and likely also 4.x and later) filesystems.
 
-Please reach out to me (rink@rink.nu) if you have any additional information from which these tools would benefit, or have any other information you wish to share (stories, bugs, feature requests and the like)
+The code has been tested with disk images from the following NetWare versions:
 
-## NWFS386
+- NetWare 2.0a
+- NetWare 2.0a ELS
+- NetWare 2.15 ELS
+- NetWare 2.2
+- NetWare 3.12
 
-There are two tools included in this repository, `inspect-nwfs386` and `shell-nwfs386`. Both tools expect a disk image file as argument. The tools will parse the partition table and expect to find a single partion (NetWare supports only a single partition per disk)
+If you have a different NetWare version, please give it a try and let me know the results! Additionally, feel free to reach out to me (rink@rink.nu) if you have any additional information from which this repository would benefit, or have any other information you wish to share (stories, bugs, feature requests and the like)
 
-## shell-nwfs386
+## transfer
 
-Provides an interactive shell to browse content in a NWFS386 partition. For example:
+The main tool available in this repository is `transfer`. This can retrieve files from both NWFS286 and NWFS386 disk images, using a commandline interface similar to FTP. `transfer` will automatically detect which NWFS version is used based on the partition type.
+
+Example usage:
 
 ```
-$ cargo run --bin shell-nwfs386 <path to disk image>
+$ cargo run --bin transfer <path to disk image>
+...
 SYS:/> dir
 <type> Name              Size Last Modified       Last Modifier
  dir   LOGIN                - 16-04-2022 08:34:12 - ? 65535
@@ -25,6 +32,7 @@ SYS:/> dir
  file  TTS$LOG.ERR       3687 12-05-2022 05:36:14 00000001
  file  BACKOUT.TTS       8192 12-05-2022 05:36:12 00000001
  dir   ETC                  - 16-04-2022 08:34:12 - ? 65535
+SYS:/> cd login
 SYS:/login> dir
 <type> Name              Size Last Modified       Last Modifier
  dir   NLS                  - 16-04-2022 08:34:00 - ? 65535
@@ -34,19 +42,15 @@ SYS:/login> get login.exe
 111625 bytes copied
 ```
 
-Only `cd`, `dir` and `get` are supported.
+Only `cd`, `dir`, `cat` and `get` are supported.
 
 ## inspect-nwfs386
 
-This tool allows you to decode and dump all structures. It can be used as follows:
+This tool allows you to decode and dump all structures on a NWFS386 image. It can be used as follows:
 
 ```
 $ cargo run --bin inspect-nwfs386 <path to disk image>
 ```
-
-## NWFS286
-
-Only a preliminary `shell-nwfs286` is available - this tool expects a disk image file. Usage is similar to `shell-nwfs386`.
 
 ## TODO / feature request
 

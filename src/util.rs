@@ -8,21 +8,15 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{Read, Seek, SeekFrom};
 use anyhow::Result;
 
+const PARTID_NETWARE_286: u8 = 0x64;
+const PARTID_NETWARE_386: u8 = 0x65;
+
 pub enum PartitionType {
     NetWare286,
     NetWare386,
 }
 
-fn to_partition_id(t: PartitionType) -> u8 {
-    match t {
-        PartitionType::NetWare286 => 0x64,
-        PartitionType::NetWare386 => 0x65,
-    }
-}
-
-pub fn find_partition<T: Seek + Read>(f: &mut T, partition_type: PartitionType) -> Result<Option<u64>> {
-    let partition_id = to_partition_id(partition_type);
-
+pub fn find_partition<T: Seek + Read>(f: &mut T) -> Result<Option<(PartitionType, u64)>> {
     // Seek to MBR and parse the partition table
     f.seek(SeekFrom::Start(446))?;
     for _ in 0..4 {
@@ -34,8 +28,10 @@ pub fn find_partition<T: Seek + Read>(f: &mut T, partition_type: PartitionType) 
         let lba_start = f.read_u32::<LittleEndian>()?;
         // Skip lba length
         f.seek(SeekFrom::Current(4))?;
-        if system_id == partition_id {
-            return Ok(Some(lba_start.into()))
+        match system_id {
+            PARTID_NETWARE_286 => { return Ok(Some((PartitionType::NetWare286, lba_start.into()))); },
+            PARTID_NETWARE_386 => { return Ok(Some((PartitionType::NetWare386, lba_start.into()))); },
+            _ => { }
         }
     }
     Ok(None)

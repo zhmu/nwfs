@@ -5,8 +5,8 @@
  * For conditions of distribution and use, see LICENSE file
  */
 use anyhow::{anyhow, Result};
-use crate::nwfs386::types;
 use crate::util;
+use crate::nwfs386::types;
 
 pub struct Image {
     pub file: std::fs::File,
@@ -23,12 +23,14 @@ impl ImageList {
     }
 
     pub fn add_image(&mut self, mut file: std::fs::File) -> Result<()> {
-        let p = util::find_partition(&mut file, util::PartitionType::NetWare386)?;
-        if p.is_none() { return Err(anyhow!("no NetWare 386 partition found")); }
-        let start_offset = p.unwrap() * types::SECTOR_SIZE;
-
-        self.images.push(Image{ file, start_offset });
-        Ok(())
+        match util::find_partition(&mut file)? {
+            Some((util::PartitionType::NetWare386, start_lba)) => {
+                let start_offset = start_lba * types::SECTOR_SIZE;
+                self.images.push(Image{ file, start_offset });
+                Ok(())
+            }
+            _ => Err(anyhow!("no NetWare 386 partition found")),
+        }
     }
 }
 
