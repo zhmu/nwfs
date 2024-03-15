@@ -44,13 +44,15 @@ SYS:/login> get login.exe
 
 Only `cd`, `dir`, `cat` and `get` are supported.
 
-## inspect-nwfs386
+## inspect
 
-This tool allows you to decode and dump all structures on a NWFS386 image. It can be used as follows:
+This tool allows you to decode and dump all relevant structures on an image containing a NetWare 286 or NetWare 386 filesystem. It can be used as follows:
 
 ```
-$ cargo run --bin inspect-nwfs386 <path to disk image>
+$ cargo run --bin inspect <path to disk image>
 ```
+
+The output is intended for developers and is not particularly user-friendly at this point.
 
 ## TODO / feature request
 
