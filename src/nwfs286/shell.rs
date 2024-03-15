@@ -14,12 +14,26 @@ use crate::shell_cli;
 
 const NWFS286_ROOT_ID: u32 = 1;
 
-fn find_directory_entry<'a>(entries: &'a [parser::DirectoryEntry], current_directory_id: u32, fname: &str) -> Result<&'a parser::DirectoryEntry> {
+fn match_parent_dir_id(de: &parser::DirEntry, parent_dir_id: u32) -> bool {
+    parent_dir_id == match de {
+        parser::DirEntry::File(v) => { v.parent_dir as u32 },
+        parser::DirEntry::Directory(d) => { d.parent_dir as u32 },
+    }
+}
+
+fn match_dir_entry_name(de: &parser::DirEntry, name: &str) -> bool {
+    match de {
+        parser::DirEntry::File(f) => f.name.eq_ignore_ascii_case(name),
+        parser::DirEntry::Directory(d) => d.name.eq_ignore_ascii_case(name)
+    }
+}
+
+fn find_directory_entry<'a>(entries: &'a [parser::DirEntry], current_directory_id: u32, fname: &str) -> Result<&'a parser::DirEntry> {
     let items: Vec<_> = entries
         .iter()
         .filter(|de|
-            de.parent_dir as u32 == current_directory_id &&
-            de.fname.eq_ignore_ascii_case(fname)
+            match_parent_dir_id(de, current_directory_id) &&
+            match_dir_entry_name(de, fname)
         ).collect();
     if items.is_empty() {
         return Err(anyhow!("File not found"));
@@ -32,13 +46,13 @@ fn find_directory_entry<'a>(entries: &'a [parser::DirectoryEntry], current_direc
 
 pub struct Nwfs286Shell {
     vol: parser::VolumeInfo,
-    entries: Vec<parser::DirectoryEntry>,
+    entries: Vec<parser::DirEntry>,
     fat: Vec<parser::FatEntry>,
     file: File
 }
 
 impl Nwfs286Shell {
-    pub fn new(vol: parser::VolumeInfo, entries: Vec<parser::DirectoryEntry>, fat: Vec<parser::FatEntry>, file: File) -> Self {
+    pub fn new(vol: parser::VolumeInfo, entries: Vec<parser::DirEntry>, fat: Vec<parser::FatEntry>, file: File) -> Self {
         Nwfs286Shell{ vol, entries, fat, file }
     }
 }
@@ -54,9 +68,19 @@ impl shell_cli::ShellImpl for Nwfs286Shell {
 
     fn dir(&self, current_dir_id: u32) {
         println!("<type> ID Name            Attr Size    Last Modified");
-        for de in self.entries.iter().filter(|e| e.parent_dir as u32 == current_dir_id) {
-            println!("???   {:3x} {:14} {:04x} {:8} {} {}",
-              de.entry_id, de.fname, de.attr, de.size, de.last_modified_date, de.last_modified_time);
+        for de in self.entries.iter().filter(|e| match_parent_dir_id(e, current_dir_id)) {
+            match de {
+                parser::DirEntry::File(f) => {
+                    println!("<file> {:3x} {:14} {:04x} {:8} {} {}",
+                      f.entry_id, f.name, f.attr, f.size, f.last_modified_date, f.last_modified_time);
+                },
+                parser::DirEntry::Directory(d) => {
+                    println!("<dir>  {:3x} {:14} {:04x} {} {} {:x} {:x} {:x} {:x} {:x}",
+                      d.entry_id, d.name, d.attr,
+                      d.last_modified_date, d.last_modified_time,
+                      d.unk22, d.unk24, d.unk26, d.unk28, d.unk30);
+                }
+            }
         }
     }
 
@@ -68,31 +92,38 @@ impl shell_cli::ShellImpl for Nwfs286Shell {
         let mut directory_ids: Vec<u32> = vec![ NWFS286_ROOT_ID ];
         while let Some(piece) = iter.next() {
             if piece.is_empty() { continue; }
-            let item = find_directory_entry(&self.entries, *directory_ids.last().unwrap(), piece).ok()?;
-            directory_ids.push(item.entry_id as u32);
+            match find_directory_entry(&self.entries, *directory_ids.last().unwrap(), piece).ok()? {
+                parser::DirEntry::Directory(d) => {
+                    directory_ids.push(d.entry_id as u32);
+                },
+                _ => { return None; }
+            }
         }
         Some(directory_ids)
     }
 
     fn retrieve_file_content(&mut self, current_dir_id: u32, fname: &str) -> Result<Vec<u8>> {
-        let de = find_directory_entry(&self.entries, current_dir_id, fname)?;
+        match find_directory_entry(&self.entries, current_dir_id, fname)? {
+            parser::DirEntry::File(f) => {
+                let mut bytes_left = f.size as usize;
+                let mut data = vec![ 0u8; bytes_left ];
 
-        let mut bytes_left = de.size as usize;
-        let mut data = vec![ 0u8; bytes_left ];
+                let mut blk = f.block_nr;
+                let mut current_offset: usize = 0;
+                while bytes_left > 0 {
+                    let chunk_size = std::cmp::min(types::BLOCK_SIZE as usize, bytes_left);
 
-        let mut blk = de.block_nr;
-        let mut current_offset: usize = 0;
-        while bytes_left > 0 {
-            let chunk_size = std::cmp::min(types::BLOCK_SIZE as usize, bytes_left);
+                    self.file.seek(SeekFrom::Start(parser::block_to_offset(blk)))?;
+                    self.file.read_exact(&mut data[current_offset..current_offset + chunk_size])?;
 
-            self.file.seek(SeekFrom::Start(parser::block_to_offset(blk)))?;
-            self.file.read_exact(&mut data[current_offset..current_offset + chunk_size])?;
-
-            blk = self.fat[blk as usize].block;
-            current_offset += chunk_size;
-            bytes_left -= chunk_size;
+                    blk = self.fat[blk as usize].block;
+                    current_offset += chunk_size;
+                    bytes_left -= chunk_size;
+                }
+                Ok(data)
+            },
+            _ => Err(anyhow!("not a file"))
         }
-        Ok(data)
     }
 
     fn handle_command(&mut self, _current_dir_id: u32, _fields: &Vec<&str>) -> bool {

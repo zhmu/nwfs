@@ -19,6 +19,8 @@ const SECTOR_VOLUME_INFO: u64 = 0x10;
 const DIRECTORY_ENTRY_SIZE: usize = 32;
 const FAT_ENTRY_SIZE: usize = 4;
 
+const ATTR_DIRECTORY: u16 = 0xff00;
+
 pub struct VolumeInfo {
     pub name: String,
     pub entry_count: usize,
@@ -28,10 +30,11 @@ pub struct VolumeInfo {
 }
 
 #[derive(Debug)]
-pub struct DirectoryEntry {
+pub struct FileItem {
     pub entry_id: u16,
     pub parent_dir: u16,
-    pub fname: String,
+    pub name: String,
+    pub unk14: u16,
     pub attr: u16,
     pub size: u32,
     pub creation_date: NwDate,
@@ -39,6 +42,28 @@ pub struct DirectoryEntry {
     pub last_modified_date: NwDate,
     pub last_modified_time: NwTime,
     pub block_nr: u16
+}
+
+#[derive(Debug)]
+pub struct DirectoryItem {
+    pub entry_id: u16,
+    pub parent_dir: u16,
+    pub name: String,
+    pub unk14: u16,
+    pub attr: u16,
+    pub last_modified_date: NwDate,
+    pub last_modified_time: NwTime,
+    pub unk22: u16,
+    pub unk24: u16,
+    pub unk26: u16,
+    pub unk28: u16,
+    pub unk30: u16,
+}
+
+#[derive(Debug)]
+pub enum DirEntry {
+    File(FileItem),
+    Directory(DirectoryItem)
 }
 
 #[derive(Debug)]
@@ -115,9 +140,9 @@ impl VolumeInfo {
     }
 }
 
-pub fn read_directory_entries(f: &mut File, blocks: &[u16]) -> Result<Vec<DirectoryEntry>> {
+pub fn read_directory_entries(f: &mut File, blocks: &[u16]) -> Result<Vec<DirEntry>> {
     let total_entry_count = (blocks.len() * BLOCK_SIZE as usize) / DIRECTORY_ENTRY_SIZE;
-    let mut result = Vec::<DirectoryEntry>::with_capacity(total_entry_count);
+    let mut result = Vec::<DirEntry>::with_capacity(total_entry_count);
 
     let mut entry_id: u16 = 0;
     for block in blocks {
@@ -128,20 +153,34 @@ pub fn read_directory_entries(f: &mut File, blocks: &[u16]) -> Result<Vec<Direct
             f.read_exact(&mut record)?;
             let mut cursor = Cursor::new(&record);
             let parent_dir = cursor.read_u16::<BigEndian>()?;
-            let mut fname = [ 0u8; 14 ];
-            cursor.read_exact(&mut fname)?;
+            let mut name = [ 0u8; 12 ];
+            cursor.read_exact(&mut name)?;
+            let name = util::asciiz_to_string(&name);
+            let unk14 = cursor.read_u16::<LittleEndian>()?;
             let attr = cursor.read_u16::<LittleEndian>()?;
-            let c = cursor.read_u16::<BigEndian>()?;
-            let d = cursor.read_u16::<BigEndian>()?;
-            let size = ((c as u32) << 16) + d as u32;
-            let creation_date = NwDate::read_from(&mut cursor)?;
-            let last_accessed_date = NwDate::read_from(&mut cursor)?;
-            let last_modified_date = NwDate::read_from(&mut cursor)?;
-            let last_modified_time = NwTime::read_from(&mut cursor)?;
-            // Note: does not seem to hold for directories!
-            let block_nr = cursor.read_u16::<LittleEndian>()?;
-            let fname = util::asciiz_to_string(&fname);
-            result.push(DirectoryEntry{ entry_id, parent_dir, fname, attr, size, creation_date, last_accessed_date, last_modified_date, last_modified_time, block_nr });
+            if (attr & ATTR_DIRECTORY) == ATTR_DIRECTORY {
+                let last_modified_date = NwDate::read_from(&mut cursor)?;
+                let last_modified_time = NwTime::read_from(&mut cursor)?;
+                let unk22 = cursor.read_u16::<BigEndian>()?;
+                let unk24 = cursor.read_u16::<BigEndian>()?;
+                let unk26 = cursor.read_u16::<BigEndian>()?;
+                let unk28 = cursor.read_u16::<BigEndian>()?;
+                let unk30 = cursor.read_u16::<BigEndian>()?;
+                let dir = DirectoryItem{entry_id, parent_dir, name, attr, unk14, last_modified_date, last_modified_time, unk22, unk24, unk26, unk28, unk30 };
+                result.push(DirEntry::Directory(dir));
+            } else {
+                let c = cursor.read_u16::<BigEndian>()?;
+                let d = cursor.read_u16::<BigEndian>()?;
+                let size = ((c as u32) << 16) + d as u32;
+                let creation_date = NwDate::read_from(&mut cursor)?;
+                let last_accessed_date = NwDate::read_from(&mut cursor)?;
+                let last_modified_date = NwDate::read_from(&mut cursor)?;
+                let last_modified_time = NwTime::read_from(&mut cursor)?;
+                // Note: does not seem to hold for directories!
+                let block_nr = cursor.read_u16::<LittleEndian>()?;
+                let file = FileItem{entry_id, parent_dir, name, attr, unk14, size, creation_date, last_accessed_date, last_modified_date, last_modified_time, block_nr};
+                result.push(DirEntry::File(file));
+            }
             entry_id += 1;
         }
 
