@@ -2,6 +2,11 @@
 
 This is an attempt to reverse engineer the Novell NetWare filesystems. It covers both NWFS286 (Novell NetWare 2.x) and NWFS386 (Novell NetWare 3.x and likely also 4.x and later) filesystems.
 
+This repository contains both code to parse/read the filesystems, as well as documentation describing the filesystem structures.
+
+* [NetWare 286 filesystem documentation](doc/nwfs286.md)
+* [NetWare 386 filesystem documentation](doc/nwfs386.md)
+
 The code has been tested with disk images from the following NetWare versions:
 
 - NetWare 2.0a
@@ -11,6 +16,10 @@ The code has been tested with disk images from the following NetWare versions:
 - NetWare 3.12
 
 If you have a different NetWare version, please give it a try and let me know the results! Additionally, feel free to reach out to me (rink@rink.nu) if you have any additional information from which this repository would benefit, or have any other information you wish to share (stories, bugs, feature requests and the like)
+
+# Thanks
+
+I'd like to thank [Michal Necasek](https://www.os2museum.com) for supporting my NWFS286 analysis, providing Novell documentation and disk images. Your support is very much appreciated, and I can highly recommend his blog!
 
 ## transfer
 
