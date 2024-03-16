@@ -90,25 +90,30 @@ impl VolumeInfo {
         f.read_exact(&mut sector)?;
 
         let mut cursor = Cursor::new(&sector);
-        let id = cursor.read_u16::<LittleEndian>()?;
-        let mut vol_name = [ 0u8; 14 ];
-        let offset = if id == 0 {
+        let mut vol_name = [ 0u8; 16 ];
+
+        let marker = cursor.read_u16::<LittleEndian>()?;
+        if marker == 0 {
+            // NetWare 2.15+ layout
             let magic = cursor.read_u16::<LittleEndian>()?;
             if magic != 0xfade {
                 return Err(anyhow!("volume information magic mismatch"));
             }
-            let _ = cursor.read_u16::<LittleEndian>()?; // 1 ?
-            22
+            let unk4 = cursor.read_u16::<LittleEndian>()?;
+            if unk4 != 1 { println!("warning: unexpected value for unk4 ({:x})", unk4); }
+            cursor.read_exact(&mut vol_name)?;
         } else {
-            20
-        };
-        cursor.read_exact(&mut vol_name)?;
+            // pre NetWare 2.15 layout
+            cursor.read_exact(&mut vol_name)?;
+            let unk18 = cursor.read_u16::<LittleEndian>()?;
+            if unk18 != 4 { println!("warning: unexpected value for unk18 ({:x})", unk18); }
+        }
         let name = util::asciiz_to_string(&vol_name);
 
-        cursor.seek(SeekFrom::Start(offset))?;
         let _remap = cursor.read_u16::<LittleEndian>()?; // this value seems to be used for block remapping?
         let entry_count = cursor.read_u8()? as usize;
-        let _ = cursor.read_u8()?; // unknown byte (3) following block size
+        let unk23_25 = cursor.read_u8()?;
+        if unk23_25 != 3 { println!("warning: unexpected value for unk23_25 ({:x})", unk23_25); }
 
         let mut directory_entries_1_blocks = Vec::<u16>::with_capacity(entry_count); // 2de
         for _ in 0..entry_count {
@@ -161,16 +166,16 @@ pub fn read_directory_entries(f: &mut File, blocks: &[u16]) -> Result<Vec<DirEnt
             if (attr & ATTR_DIRECTORY) == ATTR_DIRECTORY {
                 let last_modified_date = NwDate::read_from(&mut cursor)?;
                 let last_modified_time = NwTime::read_from(&mut cursor)?;
-                let unk22 = cursor.read_u16::<BigEndian>()?;
-                let unk24 = cursor.read_u16::<BigEndian>()?;
-                let unk26 = cursor.read_u16::<BigEndian>()?;
-                let unk28 = cursor.read_u16::<BigEndian>()?;
-                let unk30 = cursor.read_u16::<BigEndian>()?;
+                let unk22 = cursor.read_u16::<LittleEndian>()?;
+                let unk24 = cursor.read_u16::<LittleEndian>()?;
+                let unk26 = cursor.read_u16::<LittleEndian>()?;
+                let unk28 = cursor.read_u16::<LittleEndian>()?;
+                let unk30 = cursor.read_u16::<LittleEndian>()?;
                 let dir = DirectoryItem{entry_id, parent_dir, name, attr, unk14, last_modified_date, last_modified_time, unk22, unk24, unk26, unk28, unk30 };
                 result.push(DirEntry::Directory(dir));
             } else {
-                let c = cursor.read_u16::<BigEndian>()?;
-                let d = cursor.read_u16::<BigEndian>()?;
+                let c = cursor.read_u16::<LittleEndian>()?;
+                let d = cursor.read_u16::<LittleEndian>()?;
                 let size = ((c as u32) << 16) + d as u32;
                 let creation_date = NwDate::read_from(&mut cursor)?;
                 let last_accessed_date = NwDate::read_from(&mut cursor)?;
